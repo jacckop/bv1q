@@ -1,0 +1,12 @@
+{
+  "bundle_id": "ph.telegra.Telegraph",
+  "display_name": "Whitegram",
+  "short_version": "12.9.2",
+  "build_version": "60",
+  "framework_sha256": "8612105f48f0a226fa8cf20f0bf65c0d18cbdda3bbe9c24e90b9a3ac0612d40b",
+  "verified_extracted_strings": 593,
+  "dictionary_entries": 988,
+  "supplemental_visible_strings": 395,
+  "runtime_fix": "Texture/AsyncDisplayKit visible node scanner",
+  "version": "4.0.0"
+}

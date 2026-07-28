@@ -1,0 +1,70 @@
+name: Build Whitegram Arabic Dylib
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - "Sources/**"
+      - "Resources/**"
+      - "data/**"
+      - "tools/**"
+      - "build.sh"
+      - "Makefile"
+      - ".github/workflows/build-dylib.yml"
+  pull_request:
+    paths:
+      - "Sources/**"
+      - "Resources/**"
+      - "data/**"
+      - "tools/**"
+      - "build.sh"
+      - "Makefile"
+      - ".github/workflows/build-dylib.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: |
+          sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+
+      - name: Validate Arabic coverage
+        run: python3 tools/verify_translations.py
+
+      - name: Build arm64 dylib
+        run: |
+          chmod +x build.sh
+          ./build.sh
+
+      - name: Inspect output
+        run: |
+          file build/WhitegramArabic.dylib
+          otool -hv build/WhitegramArabic.dylib
+          otool -L build/WhitegramArabic.dylib
+          codesign -dv --verbose=4 build/WhitegramArabic.dylib 2>&1 || true
+          shasum -a 256 build/WhitegramArabic.dylib | tee build/SHA256.txt
+          cp coverage-report.txt build/coverage-report.txt
+
+      - name: Upload dylib
+        uses: actions/upload-artifact@v4
+        with:
+          name: WhitegramArabic-NodeFix-v6.1
+          path: |
+            build/WhitegramArabic.dylib
+            build/SHA256.txt
+            build/coverage-report.txt
+          if-no-files-found: error
+          retention-days: 30
