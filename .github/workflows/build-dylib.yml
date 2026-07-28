@@ -61,7 +61,7 @@ jobs:
       - name: Upload dylib
         uses: actions/upload-artifact@v4
         with:
-          name: WhitegramArabic-NodeFix-v6.1
+          name: WhitegramArabic-NodeFix-v7
           path: |
             build/WhitegramArabic.dylib
             build/SHA256.txt

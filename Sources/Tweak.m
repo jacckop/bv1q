@@ -6,16 +6,17 @@
 #import "WGTranslations.h"
 
 /*
- * WhitegramArabic NodeFix v6
+ * WhitegramArabic NodeFix v7
  *
- * v4 scheduled a complete window scan every time an _ASDisplayView entered a
- * window. Telegram Settings creates many Texture views at once, so hundreds of
- * delayed full-tree scans could pile up on the main thread and make the app
- * hang until iOS terminated it. v5 coalesced those callbacks, but it also
- * required a private runtime helper to write translated attributed strings.
- * That helper is absent on some iOS builds, so the scanner found every string
- * but silently skipped every Texture/Swift text node. v6 keeps the coalesced
- * scanner and restores a guarded ARC-aware fallback for those exact text ivars.
+ * The original v3 translated Whitegram strings at their localization source by
+ * hooking NSBundle, then used a Texture/ComponentFlow scanner only as a fallback.
+ * v5/v6 removed the NSBundle hook and also rejected Swift ivars whose Objective-C
+ * type encoding is empty. Whitegram 12.9.2 uses exactly those Swift ivars, so the
+ * dictionary was loaded but no translated text ever reached the visible rows.
+ *
+ * v7 restores the exact-match NSBundle path, keeps the crash-safe coalesced scan,
+ * and permits the known Swift attributedText ivar even when its runtime encoding
+ * is empty. It does not restore the unsafe global UITextView interception.
  */
 
 #pragma mark - Runtime helpers
@@ -51,7 +52,12 @@ static BOOL WGSetStrongObjectIvar(id object, Ivar ivar, id value) {
     }
 
     const char *encoding = ivar_getTypeEncoding(ivar);
-    if (!encoding || encoding[0] != '@') {
+    // Swift stored properties frequently expose an empty Objective-C type
+    // encoding. Whitegram 12.9.2's ComponentFlow MeasureState.attributedText is
+    // one of them. This setter is called only after the object class and exact
+    // ivar name have already been allow-listed, so accept an empty encoding but
+    // still reject an explicitly non-object Objective-C encoding.
+    if (encoding && encoding[0] != '\0' && encoding[0] != '@') {
         return NO;
     }
 
@@ -334,6 +340,44 @@ static void WGScheduleVisibleScanAfter(NSTimeInterval requestedDelay) {
     });
 }
 
+#pragma mark - Exact localization-source hook
+
+@interface NSBundle (WGArabicNodeFix)
+- (NSString *)wg_nf_localizedStringForKey:(NSString *)key
+                                    value:(NSString *)value
+                                    table:(NSString *)tableName;
+@end
+
+@implementation NSBundle (WGArabicNodeFix)
+- (NSString *)wg_nf_localizedStringForKey:(NSString *)key
+                                    value:(NSString *)value
+                                    table:(NSString *)tableName {
+    NSString *result = [self wg_nf_localizedStringForKey:key value:value table:tableName];
+
+    // Translate only complete dictionary entries here. Dynamic/regex rules stay
+    // in the display hooks so NSBundle never changes identifiers or partial data.
+    NSString *translated = WGArabicTranslateStringExact(result);
+    if (translated && ![translated isEqualToString:result]) {
+        return translated;
+    }
+
+    // Some generated localization accessors return the key/value unchanged.
+    // Preserve the original result unless one of those exact source strings is
+    // present in our dictionary.
+    translated = WGArabicTranslateStringExact(key);
+    if (translated && key && ![translated isEqualToString:key]) {
+        return translated;
+    }
+
+    translated = WGArabicTranslateStringExact(value);
+    if (translated && value && ![translated isEqualToString:value]) {
+        return translated;
+    }
+
+    return result;
+}
+@end
+
 #pragma mark - Stable UIKit hooks
 
 @interface UILabel (WGArabicNodeFix)
@@ -490,9 +534,13 @@ static void WGSwizzleClass(Class cls, SEL original, SEL replacement) {
 static void WGInstallUIKitHooks(void) {
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        // NSBundle and UITextView are deliberately not hooked in v6. Both are
-        // app-wide data paths, not display-only APIs, and can affect Telegram's
-        // internal logic or user-entered message content.
+        // Restore the original translation-source hook, but use exact dictionary
+        // matches only. UITextView remains deliberately unhooked so message text
+        // and editable content are never modified.
+        WGSwizzle(NSBundle.class,
+                  @selector(localizedStringForKey:value:table:),
+                  @selector(wg_nf_localizedStringForKey:value:table:));
+
         WGSwizzle(UILabel.class, @selector(setText:), @selector(wg_nf_setText:));
         WGSwizzle(UILabel.class, @selector(setAttributedText:), @selector(wg_nf_setAttributedText:));
         WGSwizzle(UIButton.class, @selector(setTitle:forState:), @selector(wg_nf_setTitle:forState:));

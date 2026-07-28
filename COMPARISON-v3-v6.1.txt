@@ -1,0 +1,19 @@
+WhitegramArabic v3 vs v6.1 — translation display diagnosis
+============================================================
+
+1) v3 installed this hook:
+   NSBundle localizedStringForKey:value:table:
+   -> WGArabicTranslateString(result)
+
+   v5/v6.1 removed it. This removed the earliest and most reliable translation
+   path used before Whitegram creates its Swift/Texture text components.
+
+2) v6.1's WGSetStrongObjectIvar rejected an ivar unless its Objective-C type
+   encoding started with '@'. Static inspection of TelegramUIFramework 12.9.2
+   shows ComponentFlow.Text.MeasureState has an `attributedText` ivar whose
+   Objective-C metadata type encoding is empty. Therefore v6.1 returned NO
+   before object_setIvar was ever called.
+
+3) v7 restores exact NSBundle translation and permits an empty encoding only on
+   the already allow-listed text classes/ivar path. The scan scheduler remains
+   coalesced, so it does not restore v4's per-row five-scan burst.
